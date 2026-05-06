@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseDocument, parseBlocks } from "../src/core/block-parser.js";
-import type { ParseContext, HeadingNode, ParagraphNode, CodeBlockNode, HorizontalRuleNode, BlockquoteNode, BulletListNode, OrderedListNode, TableNode } from "../src/core/types.js";
+import type { ParseContext, HeadingNode, ParagraphNode, CodeBlockNode, HorizontalRuleNode, BlockquoteNode, BulletListNode, OrderedListNode, TableNode, DetailsNode } from "../src/core/types.js";
 
 function makeCtx(): ParseContext {
   return {
@@ -330,6 +330,15 @@ describe("parseDocument", () => {
     const md = ":::details Click to expand\nHidden content\n:::";
     const doc = parseDocument(md);
     expect(doc.body[0].type).toBe("details");
+  });
+
+  it(":::details[open name=group1] sets open and name", () => {
+    const md = ":::details[open name=group1] My Title\ncontent\n:::";
+    const doc = parseDocument(md);
+    const node = doc.body[0] as DetailsNode;
+    expect(node.title).toBe("My Title");
+    expect(node.open).toBe(true);
+    expect(node.name).toBe("group1");
   });
 
   it("extracts :::warp", () => {

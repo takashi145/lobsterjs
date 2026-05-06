@@ -200,6 +200,12 @@ describe("toHTML — custom blocks", () => {
     expect(html).toContain("Click to expand");
     expect(html).toContain("Hidden content");
   });
+
+  it(":::details[open name=group1] renders open and name attributes", () => {
+    const html = toHTML(":::details[open name=group1] Title\ncontent\n:::");
+    expect(html).toContain('<details class="lbs-details" open name="group1">');
+    expect(html).toContain("Title");
+  });
 });
 
 describe("toHTML — footnotes", () => {

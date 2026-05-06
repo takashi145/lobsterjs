@@ -473,10 +473,32 @@ content
 - The title follows `:::details` on the same line.
 - May contain any Markdown except `:::header` / `:::footer`.
 
+**Attributes (optional):**
+
+Append `[open]`, `[name=value]`, or `[open name=value]` directly to `:::details`.
+
+| Attribute | Description |
+| :--- | :--- |
+| `open` | Render the block expanded by default |
+| `name=value` | Group blocks for accordion behaviour (only one open at a time) |
+
+```
+:::details[open] Summary title
+:::details[name=accordion] Summary title
+:::details[open name=accordion] Summary title
+```
+
 **HTML output:**
 
 ```html
+<!-- default (collapsed) -->
 <details class="lbs-details">
+  <summary class="lbs-summary">Summary title</summary>
+  …
+</details>
+
+<!-- open, with name -->
+<details class="lbs-details" open name="accordion">
   <summary class="lbs-summary">Summary title</summary>
   …
 </details>

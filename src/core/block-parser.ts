@@ -303,7 +303,7 @@ function extractCustomBlocks(
       { let depth = 0;
         while (i < lines.length) {
           const l = lines[i];
-          if (/^:::(header|footer)\s*$/.test(l) || /^:::warp\s+\S/.test(l) || /^:::details\s+/.test(l)) { depth++; }
+          if (/^:::(header|footer)\s*$/.test(l) || /^:::warp\s+\S/.test(l) || /^:::details(?:\[[^\]]*\])?\s+/.test(l)) { depth++; }
           else if (/^\s*:::\s*$/.test(l)) { if (depth === 0) break; depth--; }
           innerLines.push(l); i++;
         } i++; } // skip :::
@@ -335,7 +335,7 @@ function extractCustomBlocks(
       { let depth = 0;
         while (i < lines.length) {
           const l = lines[i];
-          if (/^:::(header|footer)\s*$/.test(l) || /^:::warp\s+\S/.test(l) || /^:::details\s+/.test(l)) { depth++; }
+          if (/^:::(header|footer)\s*$/.test(l) || /^:::warp\s+\S/.test(l) || /^:::details(?:\[[^\]]*\])?\s+/.test(l)) { depth++; }
           else if (/^\s*:::\s*$/.test(l)) { if (depth === 0) break; depth--; }
           innerLines.push(l); i++;
         } i++; }
@@ -369,7 +369,7 @@ function extractCustomBlocks(
       { let depth = 0;
         while (i < lines.length) {
           const l = lines[i];
-          if (/^:::(header|footer)\s*$/.test(l) || /^:::warp\s+\S/.test(l) || /^:::details\s+/.test(l)) { depth++; }
+          if (/^:::(header|footer)\s*$/.test(l) || /^:::warp\s+\S/.test(l) || /^:::details(?:\[[^\]]*\])?\s+/.test(l)) { depth++; }
           else if (/^\s*:::\s*$/.test(l)) { if (depth === 0) break; depth--; }
           innerLines.push(l); i++;
         } i++; }
@@ -388,16 +388,21 @@ function extractCustomBlocks(
       continue;
     }
 
-    const detailsM = line.match(/^:::details\s+(.*?)\s*$/);
+    const detailsM = line.match(/^:::details(\[[^\]]*\])?\s+(.*?)\s*$/);
     if (detailsM) {
-      const title = detailsM[1];
+      const optionText = detailsM[1] ? detailsM[1].slice(1, -1) : "";
+      const tokens = optionText.trim().split(/\s+/);
+      const open = tokens.includes("open");
+      const nameToken = tokens.find((token) => token.startsWith("name="));
+      const name = nameToken?.slice("name=".length) || undefined;
+      const title = detailsM[2];
       const innerLines: string[] = [];
       const startIdx = remainingLines.length;
       i++;
       { let depth = 0;
         while (i < lines.length) {
           const l = lines[i];
-          if (/^:::(header|footer)\s*$/.test(l) || /^:::warp\s+\S/.test(l) || /^:::details\s+/.test(l)) { depth++; }
+          if (/^:::(header|footer)\s*$/.test(l) || /^:::warp\s+\S/.test(l) || /^:::details(?:\[[^\]]*\])?\s+/.test(l)) { depth++; }
           else if (/^\s*:::\s*$/.test(l)) { if (depth === 0) break; depth--; }
           innerLines.push(l); i++;
         } i++; }
@@ -425,6 +430,8 @@ function extractCustomBlocks(
       const detailsNode: DetailsNode = {
         type: "details",
         title,
+        open,
+        name,
         children: detailsChildren,
       };
       // Insert a placeholder line so position is preserved

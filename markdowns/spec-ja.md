@@ -471,10 +471,32 @@ console.log("Hello");
 - タイトルは `:::details` と同じ行に書く。
 - `:::header` / `:::footer` 以外のMarkdownを使える。
 
+**属性（任意）:**
+
+`:::details` の直後に `[open]`、`[name=値]`、またはその両方を指定できる。
+
+| 属性 | 説明 |
+| :--- | :--- |
+| `open` | デフォルトで展開された状態でレンダリングする |
+| `name=値` | アコーディオン用グループ名（同じ name のブロックは1つしか開けない） |
+
+```
+:::details[open] サマリータイトル
+:::details[name=accordion] サマリータイトル
+:::details[open name=accordion] サマリータイトル
+```
+
 **HTML出力:**
 
 ```html
+<!-- デフォルト（折りたたみ） -->
 <details class="lbs-details">
+  <summary class="lbs-summary">サマリータイトル</summary>
+  …
+</details>
+
+<!-- open、name あり -->
+<details class="lbs-details" open name="accordion">
   <summary class="lbs-summary">サマリータイトル</summary>
   …
 </details>

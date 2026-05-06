@@ -183,6 +183,8 @@ export interface FooterContainerNode {
 export interface DetailsNode {
   type: "details";
   title: string;
+  open?: boolean;
+  name?: string;
   children: BlockNode[];
 }
 

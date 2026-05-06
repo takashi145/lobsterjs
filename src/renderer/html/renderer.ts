@@ -297,7 +297,9 @@ function renderFooterContainer(
 
 function renderDetails(node: DetailsNode, ctx: RenderContext): string {
   const content = renderBlockNodes(node.children, ctx);
-  return `<details class="lbs-details">\n<summary class="lbs-summary">${escapeHtml(node.title)}</summary>\n${content}\n</details>`;
+  const openAttr = node.open ? " open" : "";
+  const nameAttr = node.name ? ` name="${escapeHtml(node.name)}"` : "";
+  return `<details class="lbs-details"${openAttr}${nameAttr}>\n<summary class="lbs-summary">${escapeHtml(node.title)}</summary>\n${content}\n</details>`;
 }
 
 // ============================================================
