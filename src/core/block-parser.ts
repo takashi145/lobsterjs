@@ -21,6 +21,12 @@ import type {
   ParseContext,
 } from "./types.js";
 import { parseInline } from "./inline-parser.js";
+import { parseDirectiveAttributeSuffix } from "./directives/attributes.js";
+import {
+  defaultDirectiveRegistry,
+  type DirectiveRegistry,
+} from "./directives/registry.js";
+import { assertBlockTransformResult } from "./directives/transform.js";
 
 // ============================================================
 // Helpers
@@ -261,6 +267,49 @@ interface ExtractedCustomBlocks {
   warpDefs: Record<string, WarpDefinitionNode>;
   remainingLines: string[];
   detailsBlocks: { startIdx: number; node: DetailsNode }[];
+  directiveBlocks: { startIdx: number; node: BlockNode }[];
+}
+
+function matchCustomBlockDirective(
+  line: string,
+  ctx: ParseContext
+): { name: string; attributes: Record<string, string> } | null {
+  const match = line.match(/^:::([A-Za-z][A-Za-z0-9_-]*)(.*)$/);
+  if (!match || !ctx.directiveRegistry?.hasBlock(match[1])) return null;
+  const suffixSource = match[2].trim();
+  const suffix = parseDirectiveAttributeSuffix(suffixSource);
+  if (!suffix || suffix.length !== suffixSource.length) return null;
+  return { name: match[1], attributes: suffix.attributes };
+}
+
+function isRecognizedContainerOpening(line: string, ctx: ParseContext): boolean {
+  return (
+    /^:::(header|footer)\s*$/.test(line) ||
+    /^:::warp\s+\S/.test(line) ||
+    /^:::details\s+/.test(line) ||
+    matchCustomBlockDirective(line, ctx) !== null
+  );
+}
+
+function replaceExtractedPlaceholders(
+  nodes: BlockNode[],
+  extracted: ExtractedCustomBlocks
+): BlockNode[] {
+  return nodes.map((node) => {
+    if (
+      node.type !== "paragraph" ||
+      node.children.length !== 1 ||
+      node.children[0].type !== "text"
+    ) {
+      return node;
+    }
+    const text = node.children[0].text;
+    let match = text.match(/^__DETAILS_PLACEHOLDER_(\d+)__$/);
+    if (match) return extracted.detailsBlocks[Number(match[1])]?.node ?? node;
+    match = text.match(/^__DIRECTIVE_PLACEHOLDER_(\d+)__$/);
+    if (match) return extracted.directiveBlocks[Number(match[1])]?.node ?? node;
+    return node;
+  });
 }
 
 function extractCustomBlocks(
@@ -272,6 +321,7 @@ function extractCustomBlocks(
   const warpDefs: Record<string, WarpDefinitionNode> = {};
   const remainingLines: string[] = [];
   const detailsBlocks: { startIdx: number; node: DetailsNode }[] = [];
+  const directiveBlocks: { startIdx: number; node: BlockNode }[] = [];
 
   let i = 0;
   let inCodeFence: string | null = null; // tracks the fence marker (``` or ~~~)
@@ -303,7 +353,7 @@ function extractCustomBlocks(
       { let depth = 0;
         while (i < lines.length) {
           const l = lines[i];
-          if (/^:::(header|footer)\s*$/.test(l) || /^:::warp\s+\S/.test(l) || /^:::details\s+/.test(l)) { depth++; }
+          if (isRecognizedContainerOpening(l, ctx)) { depth++; }
           else if (/^\s*:::\s*$/.test(l)) { if (depth === 0) break; depth--; }
           innerLines.push(l); i++;
         } i++; } // skip :::
@@ -312,19 +362,7 @@ function extractCustomBlocks(
       const nestedHeader = extractCustomBlocks(innerLines, ctx);
       Object.assign(warpDefs, nestedHeader.warpDefs);
       let headerChildren = parseBlocks(nestedHeader.remainingLines, ctx);
-      if (nestedHeader.detailsBlocks.length > 0) {
-        headerChildren = headerChildren.map((node) => {
-          if (node.type === "paragraph" && node.children.length === 1 && node.children[0].type === "text") {
-            const txt = (node.children[0] as { type: string; text: string }).text;
-            const pm = txt.match(/^__DETAILS_PLACEHOLDER_(\d+)__$/);
-            if (pm) {
-              const idx = parseInt(pm[1], 10);
-              if (nestedHeader.detailsBlocks[idx]) return nestedHeader.detailsBlocks[idx].node;
-            }
-          }
-          return node;
-        });
-      }
+      headerChildren = replaceExtractedPlaceholders(headerChildren, nestedHeader);
       header = { type: "header_container", children: headerChildren };
       continue;
     }
@@ -335,7 +373,7 @@ function extractCustomBlocks(
       { let depth = 0;
         while (i < lines.length) {
           const l = lines[i];
-          if (/^:::(header|footer)\s*$/.test(l) || /^:::warp\s+\S/.test(l) || /^:::details\s+/.test(l)) { depth++; }
+          if (isRecognizedContainerOpening(l, ctx)) { depth++; }
           else if (/^\s*:::\s*$/.test(l)) { if (depth === 0) break; depth--; }
           innerLines.push(l); i++;
         } i++; }
@@ -344,19 +382,7 @@ function extractCustomBlocks(
       const nestedFooter = extractCustomBlocks(innerLines, ctx);
       Object.assign(warpDefs, nestedFooter.warpDefs);
       let footerChildren = parseBlocks(nestedFooter.remainingLines, ctx);
-      if (nestedFooter.detailsBlocks.length > 0) {
-        footerChildren = footerChildren.map((node) => {
-          if (node.type === "paragraph" && node.children.length === 1 && node.children[0].type === "text") {
-            const txt = (node.children[0] as { type: string; text: string }).text;
-            const pm = txt.match(/^__DETAILS_PLACEHOLDER_(\d+)__$/);
-            if (pm) {
-              const idx = parseInt(pm[1], 10);
-              if (nestedFooter.detailsBlocks[idx]) return nestedFooter.detailsBlocks[idx].node;
-            }
-          }
-          return node;
-        });
-      }
+      footerChildren = replaceExtractedPlaceholders(footerChildren, nestedFooter);
       footer = { type: "footer_container", children: footerChildren };
       continue;
     }
@@ -369,7 +395,7 @@ function extractCustomBlocks(
       { let depth = 0;
         while (i < lines.length) {
           const l = lines[i];
-          if (/^:::(header|footer)\s*$/.test(l) || /^:::warp\s+\S/.test(l) || /^:::details\s+/.test(l)) { depth++; }
+          if (isRecognizedContainerOpening(l, ctx)) { depth++; }
           else if (/^\s*:::\s*$/.test(l)) { if (depth === 0) break; depth--; }
           innerLines.push(l); i++;
         } i++; }
@@ -382,21 +408,10 @@ function extractCustomBlocks(
       // so that parseBlocks never sees raw :::xxx lines (which would cause infinite loop)
       const nestedWarp = extractCustomBlocks(innerLines, ctx);
       Object.assign(warpDefs, nestedWarp.warpDefs);
-      let warpChildren = parseBlocks(nestedWarp.remainingLines, ctx);
-      if (nestedWarp.detailsBlocks.length > 0) {
-        warpChildren = warpChildren.map((node) => {
-          if (node.type === "paragraph" && node.children.length === 1 && node.children[0].type === "text") {
-            const txt = (node.children[0] as { type: string; text: string }).text;
-            const pm = txt.match(/^__DETAILS_PLACEHOLDER_(\d+)__$/);
-            if (pm) {
-              const idx = parseInt(pm[1], 10);
-              if (nestedWarp.detailsBlocks[idx]) return nestedWarp.detailsBlocks[idx].node;
-            }
-          }
-          return node;
-        });
-      }
-      warpNode.children = warpChildren;
+      warpNode.children = replaceExtractedPlaceholders(
+        parseBlocks(nestedWarp.remainingLines, ctx),
+        nestedWarp
+      );
       // If id is duplicated, treat as plain text (spec) — simple: just overwrite
       if (warpDefs[id]) {
         // Duplicate: mark as invalid (renderer will treat as plain text)
@@ -415,7 +430,7 @@ function extractCustomBlocks(
       { let depth = 0;
         while (i < lines.length) {
           const l = lines[i];
-          if (/^:::(header|footer)\s*$/.test(l) || /^:::warp\s+\S/.test(l) || /^:::details\s+/.test(l)) { depth++; }
+          if (isRecognizedContainerOpening(l, ctx)) { depth++; }
           else if (/^\s*:::\s*$/.test(l)) { if (depth === 0) break; depth--; }
           innerLines.push(l); i++;
         } i++; }
@@ -426,20 +441,7 @@ function extractCustomBlocks(
       Object.assign(warpDefs, nestedExtracted.warpDefs);
       // Parse the cleaned content (:::warp etc. already removed)
       let detailsChildren = parseBlocks(nestedExtracted.remainingLines, ctx);
-      // Replace any nested :::details placeholders
-      if (nestedExtracted.detailsBlocks.length > 0) {
-        detailsChildren = detailsChildren.map((node) => {
-          if (node.type === "paragraph" && node.children.length === 1 && node.children[0].type === "text") {
-            const txt = (node.children[0] as { type: string; text: string }).text;
-            const pm = txt.match(/^__DETAILS_PLACEHOLDER_(\d+)__$/);
-            if (pm) {
-              const idx = parseInt(pm[1], 10);
-              if (nestedExtracted.detailsBlocks[idx]) return nestedExtracted.detailsBlocks[idx].node;
-            }
-          }
-          return node;
-        });
-      }
+      detailsChildren = replaceExtractedPlaceholders(detailsChildren, nestedExtracted);
       const detailsNode: DetailsNode = {
         type: "details",
         title,
@@ -451,11 +453,82 @@ function extractCustomBlocks(
       continue;
     }
 
+    const customDirective = matchCustomBlockDirective(line, ctx);
+    if (customDirective) {
+      const innerLines: string[] = [];
+      const startIdx = remainingLines.length;
+      let cursor = i + 1;
+      let depth = 0;
+      let closed = false;
+      let inNestedCodeFence: string | null = null;
+      while (cursor < lines.length) {
+        const nestedLine = lines[cursor];
+        const fenceMatch = nestedLine.match(/^(`{3,}|~{3,})/);
+        if (fenceMatch) {
+          if (inNestedCodeFence === null) {
+            inNestedCodeFence = fenceMatch[1];
+          } else if (
+            nestedLine.startsWith(inNestedCodeFence[0]) &&
+            nestedLine.trimEnd().length >= inNestedCodeFence.length &&
+            nestedLine.trimEnd() ===
+              inNestedCodeFence[0].repeat(nestedLine.trimEnd().length)
+          ) {
+            inNestedCodeFence = null;
+          }
+          innerLines.push(nestedLine);
+          cursor++;
+          continue;
+        }
+        if (inNestedCodeFence !== null) {
+          innerLines.push(nestedLine);
+          cursor++;
+          continue;
+        }
+        if (isRecognizedContainerOpening(nestedLine, ctx)) {
+          depth++;
+        } else if (/^\s*:::\s*$/.test(nestedLine)) {
+          if (depth === 0) {
+            closed = true;
+            break;
+          }
+          depth--;
+        }
+        innerLines.push(nestedLine);
+        cursor++;
+      }
+
+      // An unclosed directive is ordinary Markdown text.
+      if (!closed) {
+        remainingLines.push(line);
+        i++;
+        continue;
+      }
+
+      const nestedExtracted = extractCustomBlocks(innerLines, ctx);
+      Object.assign(warpDefs, nestedExtracted.warpDefs);
+      const children = replaceExtractedPlaceholders(
+        parseBlocks(nestedExtracted.remainingLines, ctx),
+        nestedExtracted
+      );
+      const handler = ctx.directiveRegistry!.getBlock(customDirective.name)!;
+      const transformed = handler.transform({
+        name: customDirective.name,
+        attributes: customDirective.attributes,
+        children,
+        rawContent: innerLines.join("\n"),
+      });
+      const node = assertBlockTransformResult(transformed, customDirective.name);
+      remainingLines.push(`__DIRECTIVE_PLACEHOLDER_${directiveBlocks.length}__`);
+      directiveBlocks.push({ startIdx, node });
+      i = cursor + 1;
+      continue;
+    }
+
     remainingLines.push(line);
     i++;
   }
 
-  return { header, footer, warpDefs, remainingLines, detailsBlocks };
+  return { header, footer, warpDefs, remainingLines, detailsBlocks, directiveBlocks };
 }
 
 // ============================================================
@@ -816,8 +889,7 @@ function parseParagraph(
       matchListItem(line) ||
       /^\s*\|/.test(line) ||
       /^\s*~\s*\|/.test(line) ||
-      /^:::/.test(line) ||
-      /^__DETAILS_PLACEHOLDER_/.test(line)
+      /^__(?:DETAILS|DIRECTIVE)_PLACEHOLDER_/.test(line)
     ) {
       break;
     }
@@ -864,6 +936,12 @@ export function parseBlocks(lines: string[], ctx: ParseContext): BlockNode[] {
       continue;
     }
 
+    if (/^__DIRECTIVE_PLACEHOLDER_\d+__$/.test(line)) {
+      nodes.push({ type: "paragraph", children: [{ type: "text", text: line }] });
+      i++;
+      continue;
+    }
+
     let result: ParseBlockResult | null = null;
 
     result ??= tryParseHeading(trimmed, i, ctx);
@@ -888,7 +966,10 @@ export function parseBlocks(lines: string[], ctx: ParseContext): BlockNode[] {
 // Document parser (entry point)
 // ============================================================
 
-export function parseDocument(markdown: string): Document {
+export function parseDocument(
+  markdown: string,
+  directiveRegistry: DirectiveRegistry = defaultDirectiveRegistry
+): Document {
   const rawLines = markdown.split("\n");
   const lines = trimTrailingSpaces(rawLines);
 
@@ -903,6 +984,7 @@ export function parseDocument(markdown: string): Document {
     warpDefs: {},
     footnoteRefs: [],
     inlineFootnoteCount: 0,
+    directiveRegistry,
   };
 
   // Parse raw footnote def texts into inline nodes
@@ -910,7 +992,7 @@ export function parseDocument(markdown: string): Document {
     ctx.footnoteDefs[id] = parseInline(text, ctx);
   }
 
-  // Extract :::header, :::footer, :::warp, :::details blocks
+  // Extract built-in and registered ::: containers.
   const extracted = extractCustomBlocks(cleanLines, ctx);
 
   // Attach warp defs to context so inline parser can resolve [~id]
@@ -918,25 +1000,7 @@ export function parseDocument(markdown: string): Document {
 
   // Parse remaining body blocks
   let body = parseBlocks(extracted.remainingLines, ctx);
-
-  // Replace details placeholders with actual nodes
-  if (extracted.detailsBlocks.length > 0) {
-    body = body.map((node) => {
-      if (
-        node.type === "paragraph" &&
-        node.children.length === 1 &&
-        node.children[0].type === "text"
-      ) {
-        const text = (node.children[0] as { type: string; text: string }).text;
-        const m = text.match(/^__DETAILS_PLACEHOLDER_(\d+)__$/);
-        if (m) {
-          const idx = parseInt(m[1], 10);
-          return extracted.detailsBlocks[idx].node;
-        }
-      }
-      return node;
-    });
-  }
+  body = replaceExtractedPlaceholders(body, extracted);
 
   return {
     header: extracted.header,

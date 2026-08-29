@@ -79,6 +79,17 @@ export interface LineBreakNode {
   type: "line_break";
 }
 
+export interface DirectiveAttributes {
+  [key: string]: string;
+}
+
+export interface InlineDirectiveNode {
+  type: "inline-directive";
+  name: string;
+  attributes: DirectiveAttributes;
+  children: InlineNode[];
+}
+
 export type InlineNode =
   | TextNode
   | EmphasisNode
@@ -91,7 +102,8 @@ export type InlineNode =
   | FootnoteRefNode
   | InlineFootnoteNode
   | WarpRefNode
-  | LineBreakNode;
+  | LineBreakNode
+  | InlineDirectiveNode;
 
 // ============================================================
 // Block AST Nodes
@@ -193,6 +205,13 @@ export interface WarpDefinitionNode {
   children: BlockNode[];
 }
 
+export interface BlockDirectiveNode {
+  type: "block-directive";
+  name: string;
+  attributes: DirectiveAttributes;
+  children: BlockNode[];
+}
+
 export type BlockNode =
   | HeadingNode
   | ParagraphNode
@@ -205,7 +224,30 @@ export type BlockNode =
   | HeaderContainerNode
   | FooterContainerNode
   | DetailsNode
-  | WarpDefinitionNode;
+  | WarpDefinitionNode
+  | BlockDirectiveNode;
+
+export interface BlockDirectiveContext {
+  name: string;
+  attributes: DirectiveAttributes;
+  children: BlockNode[];
+  rawContent: string;
+}
+
+export interface InlineDirectiveContext {
+  name: string;
+  attributes: DirectiveAttributes;
+  children: InlineNode[];
+  rawContent: string;
+}
+
+export interface BlockDirectiveHandler {
+  transform(context: BlockDirectiveContext): BlockDirectiveNode | BlockNode;
+}
+
+export interface InlineDirectiveHandler {
+  transform(context: InlineDirectiveContext): InlineDirectiveNode | InlineNode;
+}
 
 // ============================================================
 // Document
@@ -239,4 +281,6 @@ export interface ParseContext {
   footnoteRefs: string[];
   /** Counter for anonymous inline footnotes */
   inlineFootnoteCount: number;
+  /** Directive registry used for this parse, if directives are enabled. */
+  directiveRegistry?: import("./directives/registry.js").DirectiveRegistry;
 }

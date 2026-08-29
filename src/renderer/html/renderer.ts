@@ -27,6 +27,8 @@ import type {
   FootnoteRefNode,
   InlineFootnoteNode,
   WarpRefNode,
+  BlockDirectiveNode,
+  InlineDirectiveNode,
 } from "../../core/types.js";
 
 // ============================================================
@@ -133,6 +135,11 @@ function renderInlineNode(node: InlineNode, ctx: RenderContext): string {
       return renderBlockNodes(warp.children, ctx);
     }
 
+    case "inline-directive": {
+      const n = node as InlineDirectiveNode;
+      return `<span class="lbs-inline-directive lbs-inline-directive-${escapeHtml(n.name)}" data-directive="${escapeHtml(n.name)}">${renderInlineNodes(n.children, ctx)}</span>`;
+    }
+
     default:
       return "";
   }
@@ -180,6 +187,10 @@ function renderBlockNode(node: BlockNode, ctx: RenderContext): string {
     case "warp_definition":
       // Warp definitions are not rendered inline; they're referenced via [~id]
       return "";
+    case "block-directive": {
+      const n = node as BlockDirectiveNode;
+      return `<div class="lbs-directive lbs-directive-${escapeHtml(n.name)}" data-directive="${escapeHtml(n.name)}">${renderBlockNodes(n.children, ctx)}</div>`;
+    }
     default:
       return "";
   }

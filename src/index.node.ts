@@ -9,6 +9,14 @@ export { parseDocument, parseBlocks } from "./core/block-parser.js";
 export { parseInline } from "./core/inline-parser.js";
 export { renderDocument } from "./renderer/html/renderer.js";
 export type * from "./core/types.js";
+export {
+  createLobster,
+  DirectiveRegistry,
+  DirectiveRegistrationError,
+  registerBlockDirective,
+  registerInlineDirective,
+} from "./core/directives/index.js";
+export type { LobsterInstance } from "./core/directives/index.js";
 
 import { parseDocument } from "./core/block-parser.js";
 import { renderDocument } from "./renderer/html/renderer.js";

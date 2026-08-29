@@ -14,6 +14,9 @@ import type {
   LineBreakNode,
   ParseContext,
 } from "./types.js";
+import { parseDirectiveAttributeSuffix } from "./directives/attributes.js";
+import { DIRECTIVE_NAME_RE } from "./directives/registry.js";
+import { assertInlineTransformResult } from "./directives/transform.js";
 
 type MatchResult = { node: InlineNode; end: number };
 
@@ -408,6 +411,44 @@ function tryMatchStrikethrough(
   return { node, end: closeIdx + 2 };
 }
 
+/** Inline directive: :name[content]{key=value} */
+function tryMatchInlineDirective(
+  text: string,
+  pos: number,
+  ctx: ParseContext
+): MatchResult | null {
+  if (text[pos] !== ":" || text[pos - 1] === "\\" || !ctx.directiveRegistry) {
+    return null;
+  }
+
+  const nameMatch = text.slice(pos + 1).match(/^[A-Za-z][A-Za-z0-9_-]*/);
+  if (!nameMatch || !DIRECTIVE_NAME_RE.test(nameMatch[0])) return null;
+  const name = nameMatch[0];
+  const handler = ctx.directiveRegistry.getInline(name);
+  if (!handler) return null;
+
+  const bracketStart = pos + name.length + 1;
+  if (text[bracketStart] !== "[") return null;
+  const bracketEnd = findClosingBracket(text, bracketStart + 1);
+  if (bracketEnd === -1) return null;
+
+  const suffix = parseDirectiveAttributeSuffix(text.slice(bracketEnd + 1));
+  if (!suffix) return null;
+  const rawContent = text.slice(bracketStart + 1, bracketEnd);
+  const children = parseInline(rawContent, ctx);
+  const transformed = handler.transform({
+    name,
+    attributes: suffix.attributes,
+    children,
+    rawContent,
+  });
+
+  return {
+    node: assertInlineTransformResult(transformed, name),
+    end: bracketEnd + 1 + suffix.length,
+  };
+}
+
 // ============================================================
 // Main inline parser
 // ============================================================
@@ -441,6 +482,8 @@ export function parseInline(text: string, ctx: ParseContext): InlineNode[] {
       result = tryMatchInlineFootnote(text, pos, ctx);
     } else if (ch === "[") {
       result = tryMatchBracketExpression(text, pos, ctx);
+    } else if (ch === ":") {
+      result = tryMatchInlineDirective(text, pos, ctx);
     } else if (
       (ch === "*" || ch === "_") &&
       text[pos + 1] === ch &&
