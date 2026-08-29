@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createLobster,
   DirectiveRegistrationError,
+  type BlockDirectiveHandler,
   type BlockDirectiveNode,
   type InlineDirectiveNode,
 } from "../src/index.node.js";
@@ -34,7 +35,9 @@ function makeLobster() {
 describe("DirectiveRegistry", () => {
   it("validates names, handlers, duplicates, and reserved block names", () => {
     const lobster = createLobster();
-    const handler = { transform: () => ({ type: "paragraph", children: [] } as const) };
+    const handler: BlockDirectiveHandler = {
+      transform: () => ({ type: "paragraph", children: [] }),
+    };
     lobster.registerBlockDirective("valid-name", handler);
     expect(() => lobster.registerBlockDirective("valid-name", handler)).toThrow(
       /already registered/
